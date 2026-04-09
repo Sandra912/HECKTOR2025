@@ -10,7 +10,7 @@ class BaseConfig:
     """Base configuration class with common parameters."""
     
     # Data paths
-    data_root: str = "/path/to/hecktor2025_dataset"
+    data_root: str = "/home/aims/datasets/HECKTOR2025/Task1"
     train_images_dir: str = "imagesTr_resampled_cropped_npy"
     train_labels_dir: str = "labelsTr_resampled_cropped_npy"
     splits_file: str = "config/splits_final.json" # train/validate 划分文件
@@ -52,7 +52,7 @@ class BaseConfig:
     
     # Output directories
     experiment_name: str = "baseline"
-    output_dir: str = "experiments"
+    output_dir: str = "/home/aims/projects/HECKTOR2025/Task1/experiments"
     fold: int = 0
     
     def __post_init__(self):

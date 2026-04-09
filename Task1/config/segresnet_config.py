@@ -21,3 +21,6 @@ class SegResNetConfig(BaseConfig):
     in_channels: int = 2  # CT + PET (same as input_channels in BaseConfig)
     out_channels: int = 3  # background + primary tumor + metastatic tumor (same as num_classes in BaseConfig)
     dropout_prob: float = 0.2
+
+
+
