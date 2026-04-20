@@ -1,78 +1,67 @@
-"""HECKTOR dataset implementation."""
+"""HECKTOR dataset implementation (PET-only)."""
 
 import os
 import glob
 from typing import Dict, List, Optional, Callable
 import torch
 from torch.utils.data import Dataset
-import nibabel as nib
-import numpy as np
-from monai.transforms import Compose
 
 
 class HecktorDataset(Dataset):
-    """HECKTOR dataset for 3D segmentation."""
-    
+    """HECKTOR dataset for 3D segmentation (PET-only)."""
+
     def __init__(
         self,
         images_dir: str,
         labels_dir: str,
         transform: Optional[Callable] = None,
         split: str = "train",
-        case_ids: Optional[List[str]] = None # 只用指定病例
+        case_ids: Optional[List[str]] = None,
     ):
         """
-        Initialize HECKTOR dataset.
-        
         Args:
-            images_dir: Directory containing CT and PET images
-            labels_dir: Directory containing segmentation masks
+            images_dir: Directory containing PET .npz files
+            labels_dir: Directory containing label .npz files
             transform: Data transforms to apply
             split: Dataset split ("train" or "val")
-            case_ids: Optional list of specific case IDs to include in the dataset.
-                      If None, all available case IDs will be used.
+            case_ids: Optional list of specific case IDs to include
         """
         self.images_dir = images_dir
         self.labels_dir = labels_dir
         self.transform = transform
         self.split = split
-        
-        # Get all case IDs or use provided ones
+
         if case_ids is not None:
             self.case_ids = case_ids
         else:
             self.case_ids = self._get_case_ids()
-        
+
     def _get_case_ids(self) -> List[str]:
-        """Get all case IDs from the dataset."""
-        # Look for CT files to get case IDs
-        ct_pattern = os.path.join(self.images_dir, "*_ct.npz")
-        ct_files = glob.glob(ct_pattern)
-        
+        """Get all case IDs from PET files."""
+        pet_pattern = os.path.join(self.images_dir, "*_pet.npz")
+        pet_files = glob.glob(pet_pattern)
+
         case_ids = []
-        for ct_file in ct_files:
-            # Extract case ID (remove _CT.nii.gz suffix)
-            case_id = os.path.basename(ct_file).replace("_ct.npz", "")
+        for pet_file in pet_files:
+            case_id = os.path.basename(pet_file).replace("_pet.npz", "")
             case_ids.append(case_id)
-        
+
         return sorted(case_ids)
-    
+
     def __len__(self) -> int:
         return len(self.case_ids)
-    
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Get a single sample."""
         case_id = self.case_ids[idx]
-        
-        ct_path = os.path.join(self.images_dir, f"{case_id}_ct.npz")
-        pet_path = os.path.join(self.images_dir, f"{case_id}_pt.npz")
+
+        pet_path = os.path.join(self.images_dir, f"{case_id}_pet.npz")
         label_path = os.path.join(self.labels_dir, f"{case_id}_label.npz")
 
         data = {
-            "ct": ct_path,
             "pet": pet_path,
             "label": label_path,
-            "case_id": case_id
+            "case_id": case_id,
         }
 
         if self.transform:

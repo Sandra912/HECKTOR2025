@@ -10,25 +10,31 @@ class BaseConfig:
     """Base configuration class with common parameters."""
     
     # Data paths
-    data_root: str = "/home/aims/datasets/HECKTOR2025/Task1"
-    train_images_dir: str = "imagesTr_resampled_cropped_npy"
-    train_labels_dir: str = "labelsTr_resampled_cropped_npy"
-    splits_file: str = "config/splits_final.json" # train/validate 划分文件
+    data_root: str = "/data/HECKTOR2025/Task1"
+    train_images_dir: str = "imagesTr_resampled_npy"
+    train_labels_dir: str = "labelsTr_resampled_npy"
+    # train_images_dir: str = "imagesTr_tune_npy"
+    # train_labels_dir: str = "labelsTr_tune_npy"
+
+    splits_file: str = "config/splits_available.json"
+    # splits_file: str = "config/splits_tune_train30_valexisting.json"
     
     # Data properties
-    input_channels: int = 2  # CT + PET
+    input_channels: int = 1  # CT + PET
     num_classes: int = 3     # background + primary tumor + metastatic tumor
-    spatial_size: Tuple[int, int, int] = (128, 128, 128) 
+    # spatial_size: Tuple[int, int, int] = (128, 128, 128) 
+    spatial_size: Tuple[int, int, int] = (128, 128, 80)
+    
     
     # Training parameters
     batch_size: int = 2
-    learning_rate: float = 1e-2
-    weight_decay: float = 3e-5
+    learning_rate: float = 5.38e-4
+    weight_decay: float = 4.56e-5
     num_epochs: int = 350
     
     # Scheduler parameters
     # PolyLR scheduler parameters
-    poly_lr_power: float = 0.9
+    poly_lr_power: float = 0.95
     poly_lr_min_lr: float = 1e-6
     
     # Data augmentation
@@ -41,7 +47,7 @@ class BaseConfig:
     # System parameters
     device: str = "cuda"
     num_workers: int = 4 # 用4个子进程加载数据
-    pin_memory: bool = True
+    pin_memory: bool = True #True
     
     # Data caching parameters
     cache_rate: float = 0.25  # Cache 25% of training data for faster loading
@@ -52,7 +58,7 @@ class BaseConfig:
     
     # Output directories
     experiment_name: str = "baseline"
-    output_dir: str = "/home/aims/projects/HECKTOR2025/Task1/experiments"
+    output_dir: str = "/home/aims/projects/HECKTOR2025/Task1/outputs"
     fold: int = 0
     
     def __post_init__(self):
