@@ -1,14 +1,14 @@
 {
-  "epoch": 15,
-  "gtvp_mean_dsc": 0.641338592902867,
-  "gtvn_agg_dsc": 0.5099796543820341,
-  "gtvn_f1agg": 0.4369747899159664,
-  "task1_proxy_score": 0.5574079075259336,
-  "gtvn_tp": 104,
-  "gtvn_fp": 171,
-  "gtvn_fn": 97,
+  "epoch": 25,
+  "gtvp_mean_dsc": 0.6038979839048013,
+  "gtvn_agg_dsc": 0.4292538348756917,
+  "gtvn_f1agg": 0.340632603406326,
+  "task1_proxy_score": 0.4944206015229051,
+  "gtvn_tp": 70,
+  "gtvn_fp": 140,
+  "gtvn_fn": 131,
   "num_cases": 136,
-  "val_loss": 0.329157427939422,
+  "val_loss": 0.37062341577428226,
   "val_min_gtvn_size": 30,
   "sw_overlap": 0.25
 }

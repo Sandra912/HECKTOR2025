@@ -39,6 +39,138 @@ from utils.train_utils import (
 )
 from training.engine import evaluate_epoch, train_epoch
 
+from utils.ssl_transfer import load_ssl_encoder_into_monai_unet
+
+def is_monai_unet_encoder_param(name: str) -> bool:
+    """
+    Identify encoder parameters in MONAI UNet-style recursive structure.
+
+    Typical parameter names look like:
+      unet.model.0...
+      unet.model.1.submodule.0...
+      unet.model.1.submodule.1.submodule.0...
+      ...
+
+    These correspond to the downsampling / encoder path.
+    """
+    clean = name
+
+    if clean.startswith("module."):
+        clean = clean[len("module."):]
+
+    if clean.startswith("unet."):
+        clean = clean[len("unet."):]
+
+    encoder_prefixes = (
+        "model.0",
+        "model.1.submodule.0",
+        "model.1.submodule.1.submodule.0",
+        "model.1.submodule.1.submodule.1.submodule.0",
+        "model.1.submodule.1.submodule.1.submodule.1.submodule.0",
+    )
+
+    return clean.startswith(encoder_prefixes)
+
+
+def build_optimizer_with_encoder_lr(model, config, args, logger):
+    """
+    Build AdamW optimizer.
+
+    If SSL pretrained encoder is used:
+      encoder params use config.learning_rate * args.encoder_lr_scale
+      decoder/head params use config.learning_rate
+
+    Otherwise:
+      all params use config.learning_rate
+    """
+    use_ssl = getattr(args, "ssl_pretrained_encoder", None) is not None
+    encoder_lr_scale = float(getattr(args, "encoder_lr_scale", 1.0))
+
+    if not use_ssl or encoder_lr_scale == 1.0:
+        logger.info(
+            f"Using single LR for all parameters: lr={config.learning_rate:.6g}"
+        )
+        return optim.AdamW(
+            model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
+        )
+
+    encoder_params = []
+    decoder_params = []
+    encoder_names = []
+    decoder_names = []
+
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+
+        if is_monai_unet_encoder_param(name):
+            encoder_params.append(p)
+            encoder_names.append(name)
+        else:
+            decoder_params.append(p)
+            decoder_names.append(name)
+
+    encoder_numel = sum(p.numel() for p in encoder_params)
+    decoder_numel = sum(p.numel() for p in decoder_params)
+
+    logger.info(
+        f"Using discriminative LR for SSL fine-tuning: "
+        f"encoder_lr={config.learning_rate * encoder_lr_scale:.6g}, "
+        f"decoder_lr={config.learning_rate:.6g}, "
+        f"encoder_lr_scale={encoder_lr_scale}"
+    )
+    logger.info(
+        f"Encoder params: {len(encoder_params)} tensors, {encoder_numel:,} parameters"
+    )
+    logger.info(
+        f"Decoder/other params: {len(decoder_params)} tensors, {decoder_numel:,} parameters"
+    )
+
+    if len(encoder_params) == 0:
+        logger.warning(
+            "No encoder parameters matched. Falling back to single LR optimizer. "
+            "Please check model.named_parameters() names."
+        )
+        return optim.AdamW(
+            model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
+        )
+
+    if len(decoder_params) == 0:
+        logger.warning(
+            "No decoder/other parameters found. Falling back to single LR optimizer."
+        )
+        return optim.AdamW(
+            model.parameters(),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
+        )
+
+    logger.info("First matched encoder parameter names:")
+    for n in encoder_names[:10]:
+        logger.info(f"  ENCODER: {n}")
+
+    logger.info("First matched decoder/other parameter names:")
+    for n in decoder_names[:10]:
+        logger.info(f"  DECODER: {n}")
+
+    return optim.AdamW(
+        [
+            {
+                "params": encoder_params,
+                "lr": config.learning_rate * encoder_lr_scale,
+            },
+            {
+                "params": decoder_params,
+                "lr": config.learning_rate,
+            },
+        ],
+        weight_decay=config.weight_decay,
+    )
+
 
 class Trainer:
     def __init__(self, args, trial: Optional[optuna.trial.Trial] = None):
@@ -50,6 +182,9 @@ class Trainer:
         trial = self.trial
 
         config = create_config(args)
+
+        if hasattr(args, "best_model_metric") and args.best_model_metric is not None:
+            config.early_stop_metric = args.best_model_metric
 
         if args.epochs is not None:
             config.num_epochs = args.epochs
@@ -80,7 +215,7 @@ class Trainer:
         trial_params = {
             "loss_name": "dice_ce",
             "min_gtvn_size": args.min_gtvn_size,
-            "sw_overlap": 0.25,
+            "sw_overlap": 0.25, #sliding window overlap
         }
 
         if trial is not None:
@@ -94,8 +229,20 @@ class Trainer:
             )
 
         model = create_model(args, config, device)
-        logger.info(f"Model created with {sum(p.numel() for p in model.parameters()):,} parameters")
+        
+        # 如果用了 SSL 预训练，就加载 encoder 权重
+        if getattr(args, "ssl_pretrained_encoder", None):
+            model = load_ssl_encoder_into_monai_unet(
+                model=model,
+                config=config,
+                ckpt_path=args.ssl_pretrained_encoder,
+                map_location=device,
+            )
+            logger.info(f"Loaded SSL pretrained encoder from: {args.ssl_pretrained_encoder}")
 
+        logger.info(f"Model created with {sum(p.numel() for p in model.parameters()):,} parameters")
+        
+        # load the fold
         train_loader, val_loader = get_dataloaders(config, fold=args.fold)
         logger.info(
             f"Data loaded for fold {args.fold}: "
@@ -104,11 +251,18 @@ class Trainer:
 
         criterion = get_loss_function(trial_params["loss_name"])
 
-        optimizer = optim.AdamW(
-            model.parameters(),
-            lr=config.learning_rate,
-            weight_decay=config.weight_decay
+        # optimizer = optim.AdamW(
+        #     model.parameters(),
+        #     lr=config.learning_rate,
+        #     weight_decay=config.weight_decay
+        # )
+        optimizer = build_optimizer_with_encoder_lr(
+            model=model,
+            config=config,
+            args=args,
+            logger=logger,
         )
+
 
         scheduler = optim.lr_scheduler.PolynomialLR(
             optimizer,
@@ -126,6 +280,13 @@ class Trainer:
         start_epoch = 0
         best_selection_score = -1.0
         best_val_metrics = None
+        
+        # early stop
+        early_stop_counter = 0 # 连续多少次 validation 没提升
+        use_early_stopping = config.use_early_stopping
+        early_stop_patience = config.early_stop_patience # 允许多少次不提升
+        early_stop_min_delta = config.early_stop_min_delta
+        early_stop_metric = config.early_stop_metric
 
         if args.resume and trial is None:
             checkpoint = load_checkpoint(args.resume, device)
@@ -205,23 +366,59 @@ class Trainer:
                         raise optuna.TrialPruned()
 
             scheduler.step()
+
             current_lr = optimizer.param_groups[0]["lr"]
             logger.info(f"Learning rate: {current_lr:.6f}")
 
             if writer:
                 writer.add_scalar("Learning_Rate", current_lr, epoch)
 
+            # if should_validate and val_metrics is not None:
+            #     if trial is not None:
+            #         current_score = float(val_metrics[args.optuna_metric])
+            #         score_name = args.optuna_metric
+            #     else:
+            #         current_score = float(val_metrics["gtvn_f1agg"])
+            #         score_name = "gtvn_f1agg"
+
+            #     if current_score > best_selection_score:
+            #         best_selection_score = current_score
+            #         best_val_metrics = copy.deepcopy(val_metrics)
+            #         best_path = os.path.join(config.checkpoint_dir, "best_model.pth")
+
+            #         save_checkpoint(
+            #             path=best_path,
+            #             model=model,
+            #             optimizer=optimizer,
+            #             epoch=epoch,
+            #             config=config,
+            #             best_selection_score=best_selection_score,
+            #             val_metrics=val_metrics,
+            #         )
+
+            #         best_metrics_json = os.path.join(config.checkpoint_dir, "best_model_metrics.json")
+            #         save_best_metrics_json(best_metrics_json, epoch + 1, val_metrics)
+
+            #         logger.info(
+            #             f"New best model saved with {score_name}: {best_selection_score:.4f}"
+            #         )
+            
+            # early stop
             if should_validate and val_metrics is not None:
                 if trial is not None:
                     current_score = float(val_metrics[args.optuna_metric])
                     score_name = args.optuna_metric
                 else:
-                    current_score = float(val_metrics["gtvn_f1agg"])
-                    score_name = "gtvn_f1agg"
+                    current_score = float(val_metrics[early_stop_metric])
+                    score_name = early_stop_metric
 
-                if current_score > best_selection_score:
+                improved = current_score > (best_selection_score + early_stop_min_delta)
+
+                if improved:
                     best_selection_score = current_score
                     best_val_metrics = copy.deepcopy(val_metrics)
+                    early_stop_counter = 0
+
                     best_path = os.path.join(config.checkpoint_dir, "best_model.pth")
 
                     save_checkpoint(
@@ -240,6 +437,20 @@ class Trainer:
                     logger.info(
                         f"New best model saved with {score_name}: {best_selection_score:.4f}"
                     )
+                else:
+                    if use_early_stopping and trial is None:
+                        early_stop_counter += 1
+                        logger.info(
+                            f"No improvement in {score_name}. "
+                            f"Early stop counter: {early_stop_counter}/{early_stop_patience}"
+                        )
+
+                        if early_stop_counter >= early_stop_patience:
+                            logger.info(
+                                f"Early stopping triggered at epoch {epoch + 1}. "
+                                f"Best {score_name}: {best_selection_score:.4f}"
+                            )
+                            break
 
             should_save_checkpoint = False
             if config.save_checkpoint_every > 0:

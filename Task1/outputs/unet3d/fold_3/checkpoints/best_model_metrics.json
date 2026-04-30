@@ -1,0 +1,14 @@
+{
+  "epoch": 25,
+  "gtvp_mean_dsc": 0.587052698188131,
+  "gtvn_agg_dsc": 0.5552665674936418,
+  "gtvn_f1agg": 0.4601113172541744,
+  "task1_proxy_score": 0.5473708202810196,
+  "gtvn_tp": 124,
+  "gtvn_fp": 143,
+  "gtvn_fn": 148,
+  "num_cases": 136,
+  "val_loss": 0.3253673080026227,
+  "val_min_gtvn_size": 30,
+  "sw_overlap": 0.25
+}

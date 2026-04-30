@@ -17,6 +17,8 @@ import optuna
 from config import UNet3DConfig, SegResNetConfig, UNETRConfig, SwinUNETRConfig
 from models import UNet3DModel, SegResNetModel, UNETRModel, SwinUNETRModel
 
+# from models.ssl_seg_model import Simple3DSegModel
+
 NUM_FOLDS = 5
 
 
@@ -33,6 +35,8 @@ def parse_fold_list(folds_str: str) -> List[int]:
 def create_config(args):
     if args.config == "unet3d":
         config = UNet3DConfig(fold=args.fold)
+    # elif args.config == "ssl_unet_test":
+    #     config = UNet3DConfig(fold=args.fold)
     elif args.config == "segresnet":
         config = SegResNetConfig(fold=args.fold)
     elif args.config == "unetr":
@@ -46,7 +50,27 @@ def create_config(args):
     return config
 
 
+# def create_model(args, config, device):
+#     if args.config == "unet3d":
+#         model = UNet3DModel(config)
+#     elif args.config == "segresnet":
+#         model = SegResNetModel(config)
+#     elif args.config == "unetr":
+#         model = UNETRModel(config)
+#     elif args.config == "swinunetr":
+#         model = SwinUNETRModel(config)
+#     else:
+#         raise ValueError(f"Unknown model type: {args.config}")
+#     return model.to(device)
+
 def create_model(args, config, device):
+    # if args.config == "ssl_unet_test":
+    #     model = Simple3DSegModel(
+    #         in_channels=config.input_channels,
+    #         num_classes=config.num_classes,
+    #         feature_channels=config.channels,
+    #         dropout=config.dropout,
+    #     )
     if args.config == "unet3d":
         model = UNet3DModel(config)
     elif args.config == "segresnet":
@@ -56,7 +80,8 @@ def create_model(args, config, device):
     elif args.config == "swinunetr":
         model = SwinUNETRModel(config)
     else:
-        raise ValueError(f"Unknown model type: {args.config}")
+        raise ValueError(f"Unsupported config: {args.config}")
+
     return model.to(device)
 
 

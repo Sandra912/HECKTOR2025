@@ -471,7 +471,7 @@ def run_ensemble_inference(models, input_tensor, config, device="cuda", use_slid
                     roi_size=config.spatial_size,
                     sw_batch_size=4,
                     predictor=model,
-                    overlap=0.5,
+                    overlap=0.25,
                     mode="gaussian",
                     sigma_scale=0.125,
                     padding_mode="constant",
@@ -652,7 +652,7 @@ def parse_args():
     # single-case mode
     parser.add_argument("--pet_path", type=str, default=None, help="Path to PET NPZ")
     parser.add_argument("--original_ct_path", type=str, default=None, help="Path to original raw CT NIfTI")
-    parser.add_argument("--min-gtvn-size", type=int, default=10, help="Remove tiny GTVn components")
+    parser.add_argument("--min-gtvn-size", type=int, default=30, help="Remove tiny GTVn components")
 
     # batch mode
     parser.add_argument("--splits_file", type=str, default=None, help="Path to splits JSON")

@@ -10,13 +10,22 @@ class BaseConfig:
     """Base configuration class with common parameters."""
     
     # Data paths
-    data_root: str = "/data/HECKTOR2025/Task1"
+    # data_root: str = "/data/HECKTOR2025/Task1"
+    data_root: str = "/home/mi2488/hot/datasets/HECKTOR2025/Task1"
+
     train_images_dir: str = "imagesTr_resampled_npy"
     train_labels_dir: str = "labelsTr_resampled_npy"
+
+    # train_images_dir: str = "imagesTr_train25_npy"
+    # train_labels_dir: str = "labelsTr_train25_npy"
+
     # train_images_dir: str = "imagesTr_tune_npy"
     # train_labels_dir: str = "labelsTr_tune_npy"
 
     splits_file: str = "config/splits_available.json"
+    
+    # splits_file: str = "config/splits_train25.json"
+
     # splits_file: str = "config/splits_tune_train30_valexisting.json"
     
     # Data properties
@@ -27,10 +36,16 @@ class BaseConfig:
     
     
     # Training parameters
-    batch_size: int = 2
+    batch_size: int = 4
     learning_rate: float = 5.38e-4
     weight_decay: float = 4.56e-5
-    num_epochs: int = 350
+    num_epochs: int = 300
+
+    # Early stopping
+    use_early_stopping: bool = False
+    early_stop_patience: int = 20 
+    early_stop_min_delta: float = 1e-4
+    early_stop_metric: str = "gtvn_f1agg"
     
     # Scheduler parameters
     # PolyLR scheduler parameters
@@ -46,7 +61,7 @@ class BaseConfig:
     
     # System parameters
     device: str = "cuda"
-    num_workers: int = 4 # 用4个子进程加载数据
+    num_workers: int = 48  # 用4个子进程加载数据
     pin_memory: bool = True #True
     
     # Data caching parameters
@@ -58,7 +73,7 @@ class BaseConfig:
     
     # Output directories
     experiment_name: str = "baseline"
-    output_dir: str = "/home/aims/projects/HECKTOR2025/Task1/outputs"
+    output_dir: str = "/home/mi2488/hot/projects/HECKTOR2025/Task1/outputs"
     fold: int = 0
     
     def __post_init__(self):

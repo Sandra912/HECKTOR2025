@@ -15,6 +15,29 @@ Training/validation loop is delegated to `training.trainer.Trainer`,
 while metric computation, postprocessing, checkpoint handling, and training utilities are organized into separate
 modules under `utils/` and `training/`.
 
+train.py
+  ↓
+main()
+  ↓
+run_training(args)
+  ↓
+Trainer(args).run()
+  ↓
+create_config()
+  ↓
+create_model()
+  ↓
+if have SSL checkpoint: load SSL encoder
+  ↓
+get_dataloaders(fold=args.fold)
+  ↓
+for epoch:
+    train_epoch()
+    evaluate_epoch()
+    save best_model / last_model
+  ↓
+return best_val_metrics
+
 Examples
 --------
 Single fold training:
@@ -121,7 +144,7 @@ def parse_args():
         "--config",
         type=str,
         default="unet3d",
-        choices=["unet3d", "segresnet", "unetr", "swinunetr"],
+        choices=["unet3d", "ssl_unet_test", "segresnet", "unetr", "swinunetr"],
         help="Model configuration to use",
     )
     parser.add_argument("--fold", type=int, default=0, help="Cross-validation fold to use")
@@ -142,6 +165,19 @@ def parse_args():
         help="Remove predicted GTVn connected components smaller than this many voxels during validation",
     )
 
+    parser.add_argument(
+        "--ssl-pretrained-encoder",
+        type=str,
+        default=None,
+        help="Path to pretrained white-box encoder checkpoint",
+    )
+    parser.add_argument(
+        "--encoder-lr-scale",
+        type=float,
+        default=1.0,
+        help="LR scale for pretrained encoder during SSL fine-tuning. Example: 0.1 means encoder_lr = base_lr * 0.1.",
+    )
+    
     # Optuna
     parser.add_argument("--optuna", action="store_true", help="Enable Optuna hyperparameter search")
     parser.add_argument("--n-trials", type=int, default=20, help="Number of Optuna trials")

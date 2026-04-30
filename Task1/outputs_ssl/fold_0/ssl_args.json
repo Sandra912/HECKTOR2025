@@ -1,0 +1,20 @@
+{
+  "fold": 0,
+  "epochs": 5,
+  "batch_size": 8,
+  "temperature": 0.07,
+  "n_views": 2,
+  "proj_dim": 128,
+  "hidden_dim": 512,
+  "learning_rate": 0.0003,
+  "weight_decay": 1e-05,
+  "fp16_precision": false,
+  "log_every_n_steps": 10,
+  "cuda_device": 0,
+  "num_workers": 4,
+  "seed": 42,
+  "output_dir": "/home/mi2488/hot/projects/HECKTOR2025/Task1/outputs_ssl",
+  "device": "cuda:0",
+  "log_dir": "/home/mi2488/hot/projects/HECKTOR2025/Task1/outputs_ssl/fold_0/logs",
+  "ckpt_dir": "/home/mi2488/hot/projects/HECKTOR2025/Task1/outputs_ssl/fold_0/checkpoints"
+}

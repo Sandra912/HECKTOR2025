@@ -54,16 +54,23 @@ from scipy.ndimage import gaussian_filter, binary_opening, binary_closing, label
 # =========================
 # User settings
 # =========================
-DATA_ROOT = "/data/HECKTOR2025/Task1"
+# DATA_ROOT = "/data/HECKTOR2025/Task1"
+DATA_ROOT = "/home/mi2488/hot/datasets/HECKTOR2025/Task1"
 
 # IMAGES_OUT = os.path.join(DATA_ROOT, "imagesTr_tune_npy")
 # LABELS_OUT = os.path.join(DATA_ROOT, "labelsTr_tune_npy")
+
 IMAGES_OUT = os.path.join(DATA_ROOT, "imagesTr_resampled_npy")
 LABELS_OUT = os.path.join(DATA_ROOT, "labelsTr_resampled_npy")
 
+# IMAGES_OUT = os.path.join(DATA_ROOT, "imagesTr_train25_npy")
+# LABELS_OUT = os.path.join(DATA_ROOT, "labelsTr_train25_npy")
 
-# SPLITS_FILE = "/home/aims/projects/HECKTOR2025/Task1/config/splits_tune_train30_valexisting.json"
-SPLITS_FILE = "/home/aims/projects/HECKTOR2025/Task1/config/splits_available.json"
+
+
+# SPLITS_FILE = "/home/mi2488/hot/projects/HECKTOR2025/Task1/config/splits_tune_train30_valexisting.json"
+SPLITS_FILE = "/home/mi2488/hot/projects/HECKTOR2025/Task1/config/splits_available.json"
+# SPLITS_FILE = "/home/mi2488/hot/projects/HECKTOR2025/Task1/config/splits_train25.json"
 
 NUM_WORKERS = 4
 TARGET_SPACING = (4.0, 4.0, 3.0)  # (X, Y, Z) mm

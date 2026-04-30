@@ -9,7 +9,8 @@ class UNet3DConfig(BaseConfig):
     """Configuration for UNet3D model."""
     
     # Model specific experiment name
-    experiment_name: str = "unet3d"
+    # experiment_name: str = "unet3d"
+    experiment_name: str = "pretrained_unet3d"
     
     # UNet3D architecture parameters
     spatial_dims: int = 3 #3 dimension:[B, C, D, H, W] (B:batch size, C:channel(CT/PET))
