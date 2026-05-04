@@ -198,8 +198,22 @@ class SimCLR3D:
         best_val_margin = -float("inf")
         best_val_loss = float("inf")
         best_epoch = -1
+        
+        # early stop
+        early_stop_counter = 0
 
+        best_ssl_metric = getattr(self.args, "best_ssl_metric", "val_loss")
+        early_stop_patience = getattr(self.args, "early_stop_patience", 30)
+        early_stop_min_delta = getattr(self.args, "early_stop_min_delta", 1e-4)
+
+        if best_ssl_metric == "val_loss":
+            best_score = float("inf")      # loss 越小越好
+        else:
+            best_score = -float("inf")     # margin 越大越好
+        
+        last_epoch = 0
         for epoch in range(self.args.epochs):
+            last_epoch = epoch + 1
             self.model.train()
 
             # best_val_margin = -float("inf")
@@ -318,16 +332,67 @@ class SimCLR3D:
             # self.scheduler.step()
 
             # Validation after each epoch + save best pretrained encoder
+            # if val_loader is not None:
+            #     final_val_metrics = self.validate(val_loader, epoch)
+
+            #     current_val_margin = float(final_val_metrics["val_margin"])
+            #     current_val_loss = float(final_val_metrics["val_loss"])
+
+            #     if current_val_margin > best_val_margin:
+            #         best_val_margin = current_val_margin
+            #         best_val_loss = current_val_loss
+            #         best_epoch = epoch + 1
+
+            #         best_path = os.path.join(self.ckpt_dir, "best_ssl_encoder_pretrained.pth")
+
+            #         torch.save(
+            #             {
+            #                 "epoch": best_epoch,
+            #                 "encoder_state_dict": self.model.encoder.state_dict(),
+            #                 "model_state_dict": self.model.state_dict(),
+            #                 "optimizer_state_dict": self.optimizer.state_dict(),
+            #                 "best_val_margin": float(best_val_margin),
+            #                 "best_val_loss": float(best_val_loss),
+            #                 "train_loss": float(mean_loss),
+            #                 "train_positive_mean": float(mean_pos),
+            #                 "train_negative_mean": float(mean_neg),
+            #                 "train_margin": float(mean_margin),
+            #                 "val_metrics": final_val_metrics,
+            #             },
+            #             best_path,
+            #         )
+
+            #         print(
+            #             f"Saved best SSL encoder to: {best_path} "
+            #             f"(epoch={best_epoch}, val_margin={best_val_margin:.4f}, val_loss={best_val_loss:.4f})"
+            #         )
+
+            #         logging.info(
+            #             f"Saved best SSL encoder at epoch {best_epoch}: "
+            #             f"val_margin={best_val_margin:.6f}, val_loss={best_val_loss:.6f}"
+            #         )
             if val_loader is not None:
                 final_val_metrics = self.validate(val_loader, epoch)
 
                 current_val_margin = float(final_val_metrics["val_margin"])
                 current_val_loss = float(final_val_metrics["val_loss"])
 
-                if current_val_margin > best_val_margin:
+                # 选择 early stop / best model 指标
+                if best_ssl_metric == "val_loss":
+                    current_score = current_val_loss
+                    improved = current_score < (best_score - early_stop_min_delta)
+                elif best_ssl_metric == "val_margin":
+                    current_score = current_val_margin
+                    improved = current_score > (best_score + early_stop_min_delta)
+                else:
+                    raise ValueError(f"Unknown best_ssl_metric: {best_ssl_metric}")
+
+                if improved:
+                    best_score = current_score
                     best_val_margin = current_val_margin
                     best_val_loss = current_val_loss
                     best_epoch = epoch + 1
+                    early_stop_counter = 0
 
                     best_path = os.path.join(self.ckpt_dir, "best_ssl_encoder_pretrained.pth")
 
@@ -337,8 +402,12 @@ class SimCLR3D:
                             "encoder_state_dict": self.model.encoder.state_dict(),
                             "model_state_dict": self.model.state_dict(),
                             "optimizer_state_dict": self.optimizer.state_dict(),
+
+                            "best_ssl_metric": best_ssl_metric,
+                            "best_score": float(best_score),
                             "best_val_margin": float(best_val_margin),
                             "best_val_loss": float(best_val_loss),
+
                             "train_loss": float(mean_loss),
                             "train_positive_mean": float(mean_pos),
                             "train_negative_mean": float(mean_neg),
@@ -350,13 +419,44 @@ class SimCLR3D:
 
                     print(
                         f"Saved best SSL encoder to: {best_path} "
-                        f"(epoch={best_epoch}, val_margin={best_val_margin:.4f}, val_loss={best_val_loss:.4f})"
+                        f"(epoch={best_epoch}, metric={best_ssl_metric}, "
+                        f"score={best_score:.6f}, val_margin={best_val_margin:.4f}, "
+                        f"val_loss={best_val_loss:.4f})"
                     )
 
                     logging.info(
                         f"Saved best SSL encoder at epoch {best_epoch}: "
-                        f"val_margin={best_val_margin:.6f}, val_loss={best_val_loss:.6f}"
+                        f"metric={best_ssl_metric}, "
+                        f"score={best_score:.6f}, "
+                        f"val_margin={best_val_margin:.6f}, "
+                        f"val_loss={best_val_loss:.6f}"
                     )
+
+                else:
+                    early_stop_counter += 1
+
+                    print(
+                        f"No improvement in {best_ssl_metric}. "
+                        f"Early stop counter: {early_stop_counter}/{early_stop_patience}"
+                    )
+
+                    logging.info(
+                        f"No improvement in {best_ssl_metric}. "
+                        f"Early stop counter: {early_stop_counter}/{early_stop_patience}"
+                    )
+
+                    if early_stop_counter >= early_stop_patience:
+                        print(
+                            f"Early stopping triggered at epoch {epoch + 1}. "
+                            f"Best epoch={best_epoch}, best {best_ssl_metric}={best_score:.6f}"
+                        )
+
+                        logging.info(
+                            f"Early stopping triggered at epoch {epoch + 1}. "
+                            f"Best epoch={best_epoch}, best {best_ssl_metric}={best_score:.6f}"
+                        )
+
+                        break
 
             self.scheduler.step()
 
@@ -380,11 +480,15 @@ class SimCLR3D:
 
         torch.save(
             {
-                "epoch": int(self.args.epochs),
+                # "epoch": int(self.args.epochs),
+                # "epochs": int(self.args.epochs),
+                "epoch": int(last_epoch),
+                "epochs": int(last_epoch),
                 "encoder_state_dict": self.model.encoder.state_dict(),
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
-                "epochs": int(self.args.epochs),
+                "best_ssl_metric": best_ssl_metric,
+                "best_score": float(best_score),
                 "final_loss": float(mean_loss),
                 "final_positive_mean": float(mean_pos),
                 "final_negative_mean": float(mean_neg),
@@ -407,6 +511,7 @@ class SimCLR3D:
             "final_positive_mean": float(mean_pos),
             "final_negative_mean": float(mean_neg),
             "final_margin": float(mean_margin),
+            "best_ssl_metric": best_ssl_metric,
             "best_epoch": int(best_epoch),
             "best_val_margin": float(best_val_margin),
             "best_val_loss": float(best_val_loss),

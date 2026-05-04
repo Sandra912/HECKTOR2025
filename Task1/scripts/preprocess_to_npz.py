@@ -38,6 +38,16 @@ Pipeline
    - Label: uint8
    - Save as .npz with metadata
 
+num cases: 680
+
+Median shape:
+(1, 131, 98, 94)
+
+Statistics:
+X: min=51, p10=73.0, p25=104.0, median=131.0, mean=125.6, p75=147.0, p90=164.0, max=191
+Y: min=67, p10=76.0, p25=84.0, median=98.0, mean=96.7, p75=103.0, p90=116.1, max=187
+Z: min=59, p10=76.0, p25=89.0, median=94.0, mean=130.7, p75=194.0, p90=210.0, max=273
+
 """
 
 import os

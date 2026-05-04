@@ -165,12 +165,26 @@ def parse_args():
         help="Remove predicted GTVn connected components smaller than this many voxels during validation",
     )
 
+
+    #SSL
+    # 默认用了 SSL 就 freeze encoder
     parser.add_argument(
         "--ssl-pretrained-encoder",
         type=str,
         default=None,
         help="Path to pretrained white-box encoder checkpoint",
     )
+    
+    # fine-tune encoder
+    parser.add_argument(
+        "--unfreeze-ssl-encoder",
+        action="store_true",
+        help=(
+            "If set, do NOT freeze the SSL pretrained encoder. "
+            "Default behavior: when --ssl-pretrained-encoder is used, freeze encoder."
+        ),
+    )
+
     parser.add_argument(
         "--encoder-lr-scale",
         type=float,
@@ -225,6 +239,27 @@ def parse_args():
         default="gtvn_f1agg",
         choices=["gtvn_f1agg", "task1_proxy_score", "gtvn_agg_dsc", "gtvp_mean_dsc"],
         help="Metric used to select best checkpoint in normal training",
+    )
+    
+    # early_stop
+    parser.add_argument(
+    "--early-stop",
+    action="store_true",
+    help="Enable early stopping in normal training.",
+)
+
+    parser.add_argument(
+        "--early-stop-patience",
+        type=int,
+        default=30,
+        help="Early stopping patience, counted by validation rounds.",
+    )
+
+    parser.add_argument(
+        "--early-stop-min-delta",
+        type=float,
+        default=1e-4,
+        help="Minimum improvement required to reset early stopping counter.",
     )
 
     return parser.parse_args()

@@ -48,7 +48,7 @@ def parse_args():
 
     # basic
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--temperature", type=float, default=0.10)
     parser.add_argument("--n-views", type=int, default=2)
     parser.add_argument("--proj-dim", type=int, default=128)
@@ -71,6 +71,16 @@ def parse_args():
     "--autopet-split-file",
     type=str,
     default="/home/mi2488/hot/projects/HECKTOR2025/Task1/config/autopet_fdg_bodycrop_ssl_split_80_20.json",
+    )
+    
+    # early-stop
+    parser.add_argument("--early-stop-patience", type=int, default=30) #允许 validation 指标连续多少个 epoch 没有明显提升
+    parser.add_argument("--early-stop-min-delta", type=float, default=1e-4) #最小提升幅度 val_loss 曲线：如果曲线波动很小，用 1e-4 合理；如果上下抖动明显，改成 1e-3 更稳
+    parser.add_argument(
+        "--best-ssl-metric",
+        type=str,
+        default="val_loss",
+        choices=["val_loss", "val_margin"],
     )
 
     # debug
@@ -267,9 +277,6 @@ def run_ssl_training(args):
         hidden_dim=args.hidden_dim,
     )
 
-
-
-
     # if torch.cuda.device_count() > 1:
     #     print(f"Using {torch.cuda.device_count()} GPUs")
     #     model = torch.nn.DataParallel(model)
@@ -305,7 +312,7 @@ def objective(trial, base_args):
     args = copy.deepcopy(base_args)
 
     # 基于你当前已经验证过更稳定的设置
-    args.batch_size = 8
+    args.batch_size = 32
     args.n_views = 2
     args.proj_dim = 128
 

@@ -1,11 +1,19 @@
 """
-AutoPET FDG PET
-→ 只选 fdg_*_0001.nii.gz
-→ LPS 方向统一
-→ resample 到 (4.0, 4.0, 3.0)
-→ PET body crop
-→ 保存 npz
-→ 生成 80/20 train/val split
+AutoPET FDG PET body crop pipeline:
+
+1. Load FDG PET image.
+2. Reorient to LPS.
+3. Resample to target spacing (4.0, 4.0, 3.0) mm.
+4. Convert to array [1, X, Y, Z].
+5. Build body mask using PET threshold:
+   threshold = max(0.01, 1st percentile of positive voxels)
+6. Clean mask with 3D opening/closing.
+7. Keep the largest connected component as body region.
+8. Compute its bounding box [x0, x1, y0, y1, z0, z1].
+9. Add padding (8, 8, 8) voxels.
+10. Crop PET with padded bbox and save as npz.
+
+Note: cropped image size may differ across cases.
 """
 
 #!/usr/bin/env python3

@@ -71,6 +71,36 @@ def is_monai_unet_encoder_param(name: str) -> bool:
 
     return clean.startswith(encoder_prefixes)
 
+def freeze_monai_unet_encoder(model, logger=None):
+    """
+    Freeze MONAI UNet encoder/downsampling path.
+
+    This uses the same parameter-name matching rule as build_optimizer_with_encoder_lr().
+    """
+    frozen_tensors = 0
+    frozen_params = 0
+
+    for name, p in model.named_parameters():
+        if is_monai_unet_encoder_param(name):
+            p.requires_grad = False
+            frozen_tensors += 1
+            frozen_params += p.numel()
+            if logger is not None and frozen_tensors <= 10:
+                logger.info(f"Frozen encoder param: {name}")
+
+    if frozen_tensors == 0:
+        raise RuntimeError(
+            "No encoder parameters were frozen. "
+            "Please check MONAI UNet parameter names."
+        )
+
+    if logger is not None:
+        logger.info(
+            f"Frozen SSL encoder: {frozen_tensors} tensors, "
+            f"{frozen_params:,} parameters"
+        )
+
+    return frozen_tensors, frozen_params
 
 def build_optimizer_with_encoder_lr(model, config, args, logger):
     """
@@ -86,12 +116,29 @@ def build_optimizer_with_encoder_lr(model, config, args, logger):
     use_ssl = getattr(args, "ssl_pretrained_encoder", None) is not None
     encoder_lr_scale = float(getattr(args, "encoder_lr_scale", 1.0))
 
+    # if not use_ssl or encoder_lr_scale == 1.0:
+    #     logger.info(
+    #         f"Using single LR for all parameters: lr={config.learning_rate:.6g}"
+    #     )
+    #     return optim.AdamW(
+    #         model.parameters(),
+    #         lr=config.learning_rate,
+    #         weight_decay=config.weight_decay,
+    #     )
+
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+
+    if len(trainable_params) == 0:
+        raise RuntimeError("No trainable parameters found.")
+
     if not use_ssl or encoder_lr_scale == 1.0:
         logger.info(
-            f"Using single LR for all parameters: lr={config.learning_rate:.6g}"
+            f"Using single LR for trainable parameters only: "
+            f"lr={config.learning_rate:.6g}, "
+            f"trainable_params={sum(p.numel() for p in trainable_params):,}"
         )
         return optim.AdamW(
-            model.parameters(),
+            trainable_params,
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
@@ -129,12 +176,13 @@ def build_optimizer_with_encoder_lr(model, config, args, logger):
     )
 
     if len(encoder_params) == 0:
-        logger.warning(
-            "No encoder parameters matched. Falling back to single LR optimizer. "
-            "Please check model.named_parameters() names."
-        )
+        # logger.warning(
+        #     "No encoder parameters matched. Falling back to single LR optimizer. "
+        #     "Please check model.named_parameters() names."
+        # )
         return optim.AdamW(
-            model.parameters(),
+            trainable_params,
+            # model.parameters(),
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
@@ -144,7 +192,8 @@ def build_optimizer_with_encoder_lr(model, config, args, logger):
             "No decoder/other parameters found. Falling back to single LR optimizer."
         )
         return optim.AdamW(
-            model.parameters(),
+            trainable_params,
+            # model.parameters(),
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
@@ -231,6 +280,16 @@ class Trainer:
         model = create_model(args, config, device)
         
         # 如果用了 SSL 预训练，就加载 encoder 权重
+        # if getattr(args, "ssl_pretrained_encoder", None):
+        #     model = load_ssl_encoder_into_monai_unet(
+        #         model=model,
+        #         config=config,
+        #         ckpt_path=args.ssl_pretrained_encoder,
+        #         map_location=device,
+        #     )
+        #     logger.info(f"Loaded SSL pretrained encoder from: {args.ssl_pretrained_encoder}")
+
+        # logger.info(f"Model created with {sum(p.numel() for p in model.parameters()):,} parameters")
         if getattr(args, "ssl_pretrained_encoder", None):
             model = load_ssl_encoder_into_monai_unet(
                 model=model,
@@ -240,7 +299,24 @@ class Trainer:
             )
             logger.info(f"Loaded SSL pretrained encoder from: {args.ssl_pretrained_encoder}")
 
-        logger.info(f"Model created with {sum(p.numel() for p in model.parameters()):,} parameters")
+            # 默认：用了 SSL 就 freeze encoder
+            if not getattr(args, "unfreeze_ssl_encoder", False):
+                freeze_monai_unet_encoder(model, logger)
+                logger.info(
+                    "SSL encoder is frozen. Only decoder / segmentation head will be trained."
+                )
+            else:
+                logger.info(
+                    "SSL encoder is NOT frozen because --unfreeze-ssl-encoder was set."
+                )
+
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+        logger.info(
+            f"Model created with {total_params:,} parameters "
+            f"({trainable_params:,} trainable)"
+        )
         
         # load the fold
         train_loader, val_loader = get_dataloaders(config, fold=args.fold)
@@ -283,6 +359,12 @@ class Trainer:
         
         # early stop
         early_stop_counter = 0 # 连续多少次 validation 没提升
+        
+        if getattr(args, "early_stop", False):
+            config.use_early_stopping = True
+            config.early_stop_patience = int(args.early_stop_patience)
+            config.early_stop_min_delta = float(args.early_stop_min_delta)
+
         use_early_stopping = config.use_early_stopping
         early_stop_patience = config.early_stop_patience # 允许多少次不提升
         early_stop_min_delta = config.early_stop_min_delta
@@ -367,11 +449,19 @@ class Trainer:
 
             scheduler.step()
 
-            current_lr = optimizer.param_groups[0]["lr"]
-            logger.info(f"Learning rate: {current_lr:.6f}")
+            # current_lr = optimizer.param_groups[0]["lr"]
+            # logger.info(f"Learning rate: {current_lr:.6f}")
+
+            # if writer:
+            #     writer.add_scalar("Learning_Rate", current_lr, epoch)
+            current_lrs = [group["lr"] for group in optimizer.param_groups]
+            logger.info(
+                "Learning rate(s): " + ", ".join([f"{lr:.6g}" for lr in current_lrs])
+            )
 
             if writer:
-                writer.add_scalar("Learning_Rate", current_lr, epoch)
+                for i, lr in enumerate(current_lrs):
+                    writer.add_scalar(f"Learning_Rate/group_{i}", lr, epoch)
 
             # if should_validate and val_metrics is not None:
             #     if trial is not None:
